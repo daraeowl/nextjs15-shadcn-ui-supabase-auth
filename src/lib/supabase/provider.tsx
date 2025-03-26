@@ -33,11 +33,37 @@ export function SupabaseProvider({ children }: SupabaseProviderProps) {
 
       // Make sure realtime is connected
       try {
-        const channel = supabase.channel('system');
-        channel.subscribe();
+        // Initialize a system channel for basic connectivity
+        const systemChannel = supabase.channel('system');
+        systemChannel.subscribe(status => {
+          console.log(`System channel status: ${status}`);
+        });
+
+        // Initialize a dedicated channel for the game
+        const gameChannel = supabase.channel('clicker-game');
+
+        // Subscribe to real-time changes on the clicks table
+        gameChannel
+          .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'clicks' },
+            (payload) => {
+              console.log('Realtime update for clicks:', payload);
+            }
+          )
+          // Subscribe to profile changes
+          .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'profiles' },
+            (payload) => {
+              console.log('Realtime update for profiles:', payload);
+            }
+          )
+          .subscribe(status => {
+            console.log(`Game channel status: ${status}`);
+          });
 
         return () => {
-          supabase.removeChannel(channel);
+          supabase.removeChannel(systemChannel);
+          supabase.removeChannel(gameChannel);
         };
       } catch (error) {
         console.error('Error initializing realtime:', error);

@@ -46,23 +46,31 @@ export function useClickerGame() {
     // 3. Data Fetching - Single Responsibility 
     const fetchScores = useCallback(async () => {
         try {
+            console.log('Fetching scores for leaderboard update...');
+
             // Get all profiles
             const { data: profiles, error: profilesError } = await supabase
                 .from('profiles')
                 .select('id, username');
 
-            if (profilesError) throw profilesError;
+            if (profilesError) {
+                console.error('Error fetching profiles:', profilesError);
+                throw profilesError;
+            }
+
+            console.log('Fetched profiles:', profiles);
 
             // Get all clicks
             const { data: clicks, error: clicksError } = await supabase
                 .from('clicks')
                 .select('id, qty');
 
-            if (clicksError) throw clicksError;
+            if (clicksError) {
+                console.error('Error fetching clicks:', clicksError);
+                throw clicksError;
+            }
 
-            // Log the current user ID and clicks fetched to debug
-            console.log('Current user ID:', user?.id);
-            console.log('Clicks fetched:', clicks);
+            console.log('Fetched clicks:', clicks);
 
             // Update current user's click count if available
             const userClicks = clicks?.find(click => click.id === user?.id);
@@ -82,6 +90,12 @@ export function useClickerGame() {
                     serverConfirmedClicksRef.current = 0;
                     setClickCount(clickQueueRef.current.pendingClicks);
                 }
+            }
+
+            // Make sure both profiles and clicks arrays exist before proceeding
+            if (!profiles || !clicks) {
+                console.warn('Missing data: profiles or clicks array is empty');
+                return;
             }
 
             // Combine and format data
@@ -104,6 +118,7 @@ export function useClickerGame() {
                     rank: index + 1
                 }));
 
+            console.log('Updating players state with:', rankedPlayers);
             setPlayers(rankedPlayers);
             setIsLoading(false);
         } catch (error) {
@@ -149,24 +164,42 @@ export function useClickerGame() {
     // 2. Data Subscription - Single Responsibility
     useEffect(() => {
         setIsLoading(true);
+        console.log('Setting up real-time subscription for clicker game...');
 
         // Setup subscription to both tables
         const scoresChannel = supabase
             .channel('clicker-scores')
             .on('postgres_changes',
                 { event: '*', schema: 'public', table: 'clicks' },
-                () => fetchScores()
+                (payload) => {
+                    console.log('🔴 Received real-time update for clicks:', payload);
+                    console.log('Payload new value:', payload.new);
+                    console.log('Triggering fetchScores due to clicks update');
+                    fetchScores();
+                }
+            )
+            // Also listen for profile changes
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'profiles' },
+                (payload) => {
+                    console.log('🔵 Received real-time update for profiles:', payload);
+                    console.log('Payload new value:', payload.new);
+                    console.log('Triggering fetchScores due to profiles update');
+                    fetchScores();
+                }
             )
             .subscribe(status => {
-                console.log(`Subscription status: ${status}`);
+                console.log(`Subscription status in hook: ${status}`);
                 setStatus(status === 'SUBSCRIBED' ? 'connected' :
                     status === 'CHANNEL_ERROR' ? 'error' : 'connecting');
             });
 
         // Initial data load
+        console.log('Performing initial data load for leaderboard...');
         fetchScores();
 
         return () => {
+            console.log('Cleaning up real-time subscription');
             supabase.removeChannel(scoresChannel);
         };
     }, [supabase, fetchScores]);
