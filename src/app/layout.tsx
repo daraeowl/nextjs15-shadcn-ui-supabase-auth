@@ -8,6 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Analytics } from "@vercel/analytics/react"
+import { AchievementNotificationManager } from "@/components/achievement-notification-manager";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -56,6 +57,8 @@ export default function RootLayout({
               </ErrorBoundary>
             </TooltipProvider>
           </SidebarProvider>
+          {/* Achievement notifications */}
+          <AchievementNotificationManager />
           <Toaster position="top-center" closeButton richColors />
         </SupabaseProvider>
       </body>

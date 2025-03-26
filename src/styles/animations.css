@@ -1,0 +1,129 @@
+/* Basic animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes bounceIn {
+    0% {
+        transform: scale(0.3);
+        opacity: 0;
+    }
+
+    40% {
+        transform: scale(1.1);
+    }
+
+    60% {
+        transform: scale(0.9);
+    }
+
+    80% {
+        transform: scale(1.03);
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes scaleIn {
+    0% {
+        transform: scale(0);
+        opacity: 0;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes glow {
+    0% {
+        box-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
+    }
+
+    50% {
+        box-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+    }
+
+    100% {
+        box-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
+    }
+}
+
+@keyframes spinSlow {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Animation classes for achievements */
+.animate-fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+.animate-slide-in-right {
+    animation: slideInRight 0.5s ease-in-out;
+}
+
+.animate-bounce-in {
+    animation: bounceIn 0.8s ease-in-out;
+}
+
+.animate-scale-in {
+    animation: scaleIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.animate-glow {
+    animation: glow 2s infinite, slideInRight 0.5s ease-in-out;
+}
+
+.animate-spin-slow {
+    animation: spinSlow 3s linear infinite;
+}
+
+/* Achievement backgrounds */
+.achievement-common {
+    background: linear-gradient(135deg, #f0f9ff 0%, #e6f7ff 100%);
+}
+
+.achievement-uncommon {
+    background: linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%);
+}
+
+.achievement-rare {
+    background: linear-gradient(135deg, #f9f0ff 0%, #efdbff 100%);
+}
+
+.achievement-epic {
+    background: linear-gradient(135deg, #fff7e6 0%, #ffe7ba 100%);
+}
+
+.achievement-legendary {
+    background: linear-gradient(135deg, #fffbe6 0%, #fff1b8 100%);
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}

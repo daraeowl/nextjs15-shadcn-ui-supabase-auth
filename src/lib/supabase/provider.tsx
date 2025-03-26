@@ -57,6 +57,20 @@ export function SupabaseProvider({ children }: SupabaseProviderProps) {
               console.log('Realtime update for profiles:', payload);
             }
           )
+          // Subscribe to user achievement changes
+          .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'user_achievements' },
+            (payload) => {
+              console.log('Realtime update for user achievements:', payload);
+            }
+          )
+          // Subscribe to user power changes
+          .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'user_powers' },
+            (payload) => {
+              console.log('Realtime update for user powers:', payload);
+            }
+          )
           .subscribe(status => {
             console.log(`Game channel status: ${status}`);
           });

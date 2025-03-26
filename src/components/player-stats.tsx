@@ -1,141 +1,216 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MousePointerClick, Trophy, User } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+import { useSupabase } from "@/lib/supabase/provider";
+
+interface Power {
+    id: number;
+    power_id: number;
+    name: string;
+    description: string | null;
+    effect_type: string;
+    level: number;
+}
 
 interface PlayerStatsProps {
-    username: string;
-    clickCount: number;
-    rank: number;
-    loading: boolean;
-    onClickButton: () => Promise<void>;
+    clickCount?: number;
+    rank?: number;
+    username?: string;
+    loading?: boolean;
+    onClickButton?: () => void;
+    clickValue?: number;
+    hasBonus?: boolean;
+    userId?: string;
 }
 
 export default function PlayerStats({
-    username,
-    clickCount,
-    rank,
-    loading,
-    onClickButton
+    clickCount = 0,
+    rank = 0,
+    username = "",
+    loading = false,
+    onClickButton,
+    clickValue = 1,
+    hasBonus = false,
+    userId,
 }: PlayerStatsProps) {
-    const [clickRate, setClickRate] = useState(0);
-    const clickTimestamps = useRef<number[]>([]);
-    const clickRateTimerRef = useRef<number | null>(null);
-    const [isButtonAnimating, setIsButtonAnimating] = useState(false);
+    const [nextRankPoints, setNextRankPoints] = useState(1000);
+    const [progress, setProgress] = useState(0);
+    const [powers, setPowers] = useState<Power[]>([]);
+    const [loadingPowers, setLoadingPowers] = useState(false);
+    const [needsSync, setNeedsSync] = useState(false);
+    const supabase = useSupabase();
 
-    // Calculate click rate
+    // Calculate next rank threshold
     useEffect(() => {
-        const calculateClickRate = () => {
-            const now = performance.now();
-            // Filter timestamps from the last second
-            const oneSecondAgo = now - 1000;
-            const recentClicks = clickTimestamps.current.filter(t => t > oneSecondAgo);
+        if (rank > 0) {
+            const nextRankThreshold = Math.ceil(1000 * Math.pow(1.5, rank));
+            setNextRankPoints(nextRankThreshold);
 
-            // Update click rate
-            setClickRate(recentClicks.length);
+            // Calculate progress percentage
+            const prevRankThreshold = rank > 1 ? Math.ceil(1000 * Math.pow(1.5, rank - 1)) : 0;
+            const pointsInCurrentRank = clickCount - prevRankThreshold;
+            const pointsNeededForNextRank = nextRankThreshold - prevRankThreshold;
+            const progressPercentage = Math.min(100, Math.round((pointsInCurrentRank / pointsNeededForNextRank) * 100));
+            setProgress(progressPercentage);
+        }
+    }, [clickCount, rank]);
 
-            // Clean up old timestamps (only keep last 5 seconds worth)
-            clickTimestamps.current = clickTimestamps.current.filter(t => t > now - 5000);
+    // Fetch active powers using RPC
+    const fetchActivePowers = useCallback(async () => {
+        if (!userId) return;
 
-            // Schedule next calculation
-            clickRateTimerRef.current = window.setTimeout(calculateClickRate, 100);
-        };
+        try {
+            setLoadingPowers(true);
+            const { data, error } = await supabase.rpc('get_active_powers', {
+                user_id_param: userId
+            });
 
-        // Start calculation
-        calculateClickRate();
-
-        // Cleanup timeout on unmount
-        return () => {
-            if (clickRateTimerRef.current !== null) {
-                clearTimeout(clickRateTimerRef.current);
-                clickRateTimerRef.current = null;
+            if (error) {
+                console.error('Error fetching active powers:', error);
+                return;
             }
-        };
-    }, []);
 
-    // Handle click with animation
-    const handleClick = async () => {
-        // Record timestamp for click rate calculation
-        clickTimestamps.current.push(performance.now());
+            console.log('Fetched active powers:', data);
+            setPowers(data || []);
+        } catch (error) {
+            console.error('Error fetching active powers:', error);
+        } finally {
+            setLoadingPowers(false);
+        }
+    }, [userId, supabase]);
 
-        // Animate button
-        setIsButtonAnimating(true);
-        setTimeout(() => setIsButtonAnimating(false), 150);
+    // Sync powers between database and memory
+    const syncPowers = async () => {
+        if (!userId) return;
 
-        await onClickButton();
+        try {
+            toast.loading('Syncing powers...');
+            const result = await fetch('/api/sync-powers', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ userId })
+            });
+
+            const data = await result.json();
+
+            if (data.success) {
+                toast.success('Powers synchronized successfully!');
+                setNeedsSync(false);
+                fetchActivePowers();
+            } else {
+                toast.error('Failed to sync powers');
+            }
+        } catch (error) {
+            console.error('Error syncing powers:', error);
+            toast.error('Failed to sync powers');
+        }
     };
 
-    if (loading) {
-        return (
-            <Card className="h-full">
-                <CardHeader className="pb-3">
-                    <CardTitle className="text-xl">Player Stats</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                    <div className="space-y-2">
-                        <Skeleton className="h-4 w-3/4" />
-                        <Skeleton className="h-10 w-full" />
-                    </div>
-                    <div className="space-y-2">
-                        <Skeleton className="h-4 w-1/2" />
-                        <Skeleton className="h-4 w-2/3" />
-                        <Skeleton className="h-4 w-1/2" />
-                    </div>
-                    <Skeleton className="h-16 w-full" />
-                </CardContent>
-            </Card>
-        );
-    }
+    // Fetch active powers on component mount and every 10 seconds
+    useEffect(() => {
+        if (userId) {
+            fetchActivePowers();
+
+            // Refresh powers every 10 seconds
+            const interval = setInterval(() => {
+                fetchActivePowers();
+            }, 10000);
+
+            return () => clearInterval(interval);
+        }
+    }, [userId, fetchActivePowers]);
 
     return (
-        <Card className="h-full">
-            <CardHeader className="pb-3">
-                <CardTitle className="text-xl flex items-center gap-2">
-                    <User className="h-5 w-5" />
-                    {username}
-                </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-                <div>
-                    <div className="text-4xl font-bold text-center tabular-nums mb-2 tracking-tight">
-                        {clickCount}
-                    </div>
-                    <p className="text-center text-muted-foreground text-sm">Total Clicks</p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                    <div className="bg-muted p-3 rounded-lg flex flex-col items-center">
-                        <div className="flex items-center justify-center text-amber-500 mb-1">
-                            <Trophy className="h-4 w-4 mr-1" />
-                            <span className="font-semibold text-lg">#{rank || '—'}</span>
+        <div className="space-y-4">
+            {/* Player info */}
+            <div className="flex flex-col space-y-2">
+                {loading ? (
+                    <>
+                        <Skeleton className="h-6 w-3/4" />
+                        <Skeleton className="h-4 w-1/2" />
+                    </>
+                ) : (
+                    <>
+                        <h3 className="font-semibold text-2xl">{username || "Player"}</h3>
+                        <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground">Rank {rank}</span>
+                            {hasBonus && (
+                                <Badge variant="outline" className="bg-gradient-to-r from-orange-100 to-amber-100 text-amber-700 border-amber-200">
+                                    +{clickValue - 1} bonus/click
+                                </Badge>
+                            )}
                         </div>
-                        <p className="text-xs text-center text-muted-foreground">Rank</p>
-                    </div>
+                    </>
+                )}
+            </div>
 
-                    <div className="bg-muted p-3 rounded-lg flex flex-col items-center">
-                        <div className="flex items-center justify-center text-blue-500 mb-1">
-                            <MousePointerClick className="h-4 w-4 mr-1" />
-                            <span className="font-semibold text-lg">{clickRate}/s</span>
+            {/* Click stats */}
+            <div className="space-y-2">
+                {loading ? (
+                    <Skeleton className="h-8 w-full" />
+                ) : (
+                    <div className="flex justify-between items-baseline">
+                        <div className="text-3xl font-bold">{clickCount.toLocaleString()}</div>
+                        <div className="text-sm text-muted-foreground">
+                            Next rank: {nextRankPoints.toLocaleString()}
                         </div>
-                        <p className="text-xs text-center text-muted-foreground">Click Rate</p>
                     </div>
+                )}
+                {/* Simple progress bar */}
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${progress}%` }}></div>
                 </div>
+            </div>
 
-                <Button
-                    onClick={handleClick}
-                    size="lg"
-                    className={cn(
-                        "w-full h-16 text-lg font-bold shadow-sm transition-all",
-                        isButtonAnimating ? "scale-95 bg-primary-foreground text-primary translate-y-0.5" : ""
+            {/* Active powers */}
+            {userId && (
+                <div className="space-y-2 pt-2">
+                    <div className="flex justify-between items-center">
+                        <h4 className="font-medium">Active Powers</h4>
+                        {needsSync && (
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={syncPowers}
+                                className="h-7 rounded-full px-3 text-xs"
+                            >
+                                Sync Powers
+                            </Button>
+                        )}
+                    </div>
+                    {loadingPowers ? (
+                        <div className="space-y-1 mt-2">
+                            <Skeleton className="h-6 w-full" />
+                            <Skeleton className="h-6 w-3/4" />
+                        </div>
+                    ) : powers.length > 0 ? (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                            {powers.map((power) => (
+                                <Badge key={power.id} variant="secondary" className="py-1">
+                                    {power.name} Lvl {power.level}
+                                </Badge>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-sm text-muted-foreground mt-2">No active powers</div>
                     )}
-                >
-                    Click Me!
-                </Button>
-            </CardContent>
-        </Card>
+                </div>
+            )}
+
+            <Button
+                className="w-full"
+                size="lg"
+                onClick={onClickButton}
+                disabled={loading}
+            >
+                Click to Earn ({clickValue} point{clickValue !== 1 ? 's' : ''})
+            </Button>
+        </div>
     );
 } 
